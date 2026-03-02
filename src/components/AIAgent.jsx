@@ -47,7 +47,7 @@ export default function AIAgent({ selectedState, weatherData, soilData, register
     setLoading(true);
 
     try {
-      const res = await fetch("http://localhost:8000/api/agent", {
+      const res = await fetch("https://agrifriend-backend.onrender.com/api/agent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

@@ -91,7 +91,7 @@ export default function MapSection({ onStateSelect, onAskAI }) {
 
     const prompt = `Based on the current conditions in ${selectedState.name}, India, list the top 3-4 best crops to grow right now. Be very brief — just crop names with one short reason each. Format as a simple list.`;
 
-    fetch("http://localhost:8000/api/agent", {
+    fetch("https://agrifriend-backend.onrender.com/api/agent", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -133,7 +133,7 @@ export default function MapSection({ onStateSelect, onAskAI }) {
     setApiLoading(true);
 
     fetch(
-      `http://localhost:8000/api/region-data?lat=${selectedState.lat}&lng=${selectedState.lng}`
+      `https://agrifriend-backend.onrender.com/api/region-data?lat=${selectedState.lat}&lng=${selectedState.lng}`
     )
       .then((r) => {
         if (!r.ok) throw new Error("API error");
