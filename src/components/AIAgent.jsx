@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import "./AIAgent.css";
+import { API_URL } from "../config";
 
 export default function AIAgent({ selectedState, weatherData, soilData, registerOpen }) {
   const [isOpen, setIsOpen]     = useState(false);
@@ -46,14 +47,17 @@ export default function AIAgent({ selectedState, weatherData, soilData, register
     setInput("");
     setLoading(true);
 
+    // Filter out welcome messages — only send real conversation to backend
+    const conversationMessages = updated.filter(
+      (m) => !(m.role === "assistant" && m.content.startsWith("👋"))
+    );
 
-    // "https://agrifriend-backend.onrender.com/api/agent"
     try {
-      const res = await fetch("http://localhost:8000/api/agent", {
+      const res = await fetch(`${API_URL}/api/agent`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          messages: updated,
+          messages: conversationMessages,
           state:    selectedState || null,
           weather:  weatherData   || null,
           soil:     soilData      || null,

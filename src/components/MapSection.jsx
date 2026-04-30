@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { MapContainer, GeoJSON, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import "./MapSection.css";
+import { API_URL } from "../config";
 
 const DISTRICT_GEOJSON_URL =
   "/india_districts.geojson";
@@ -55,7 +56,7 @@ export default function MapSection({ onStateSelect, onAskAI }) {
 
     const prompt = `Based on current conditions in ${selectedDistrict.district} district, ${selectedDistrict.state}, India, list top 3-4 best crops to grow right now. Be brief — crop name with one short reason each.`;
 
-    fetch("https://agrifriend-backend.onrender.com/api/agent", {
+    fetch(`${API_URL}/api/agent`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -103,7 +104,7 @@ export default function MapSection({ onStateSelect, onAskAI }) {
     setApiLoading(true);
 
     fetch(
-      `https://agrifriend-backend.onrender.com/api/region-data?lat=${selectedDistrict.lat}&lng=${selectedDistrict.lng}`
+      `${API_URL}/api/region-data?lat=${selectedDistrict.lat}&lng=${selectedDistrict.lng}`
     )
       .then((r) => {
         if (!r.ok) throw new Error("API error");
