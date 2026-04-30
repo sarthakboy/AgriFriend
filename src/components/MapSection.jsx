@@ -3,11 +3,10 @@ import { MapContainer, GeoJSON, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import "./MapSection.css";
 
-// ── Working GeoJSON URL (fetched at runtime, no local file needed) ──
-const INDIA_GEOJSON_URL =
-  "https://gist.githubusercontent.com/jbrobst/56c13bbbf9d97d187fea01ca62ea5112/raw/e388c4cae20aa53cb5090210a42ebb9b765c0a36/india_states.geojson";
+const DISTRICT_GEOJSON_URL =
+  "/india_districts.geojson";
 
-const STATE_COLORS = [
+const COLORS = [
   "#FF6B6B","#FF8E53","#FFC300","#2ECC71","#1ABC9C",
   "#3498DB","#9B59B6","#E91E63","#00BCD4","#8BC34A",
   "#FF5722","#F06292","#AED581","#4DB6AC","#7986CB",
@@ -16,46 +15,11 @@ const STATE_COLORS = [
   "#A5D6A7","#BCAAA4","#B0BEC5","#90CAF9","#FFAB91",
 ];
 
-const STATE_COORDS = {
-  "Andhra Pradesh":    { lat: 15.9129, lng: 79.7400 },
-  "Arunachal Pradesh": { lat: 28.2180, lng: 94.7278 },
-  "Assam":             { lat: 26.2006, lng: 92.9376 },
-  "Bihar":             { lat: 25.0961, lng: 85.3131 },
-  "Chhattisgarh":      { lat: 21.2787, lng: 81.8661 },
-  "Goa":               { lat: 15.2993, lng: 74.1240 },
-  "Gujarat":           { lat: 22.2587, lng: 71.1924 },
-  "Haryana":           { lat: 29.0588, lng: 76.0856 },
-  "Himachal Pradesh":  { lat: 31.1048, lng: 77.1734 },
-  "Jharkhand":         { lat: 23.6102, lng: 85.2799 },
-  "Karnataka":         { lat: 15.3173, lng: 75.7139 },
-  "Kerala":            { lat: 10.8505, lng: 76.2711 },
-  "Madhya Pradesh":    { lat: 22.9734, lng: 78.6569 },
-  "Maharashtra":       { lat: 19.7515, lng: 75.7139 },
-  "Manipur":           { lat: 24.6637, lng: 93.9063 },
-  "Meghalaya":         { lat: 25.4670, lng: 91.3662 },
-  "Mizoram":           { lat: 23.1645, lng: 92.9376 },
-  "Nagaland":          { lat: 26.1584, lng: 94.5624 },
-  "Odisha":            { lat: 20.9517, lng: 85.0985 },
-  "Punjab":            { lat: 31.1471, lng: 75.3412 },
-  "Rajasthan":         { lat: 27.0238, lng: 74.2179 },
-  "Sikkim":            { lat: 27.5330, lng: 88.5122 },
-  "Tamil Nadu":        { lat: 11.1271, lng: 78.6569 },
-  "Telangana":         { lat: 18.1124, lng: 79.0193 },
-  "Tripura":           { lat: 23.9408, lng: 91.9882 },
-  "Uttar Pradesh":     { lat: 26.8467, lng: 80.9462 },
-  "Uttarakhand":       { lat: 30.0668, lng: 79.0193 },
-  "West Bengal":       { lat: 22.9868, lng: 87.8550 },
-  "Delhi":             { lat: 28.6139, lng: 77.2090 },
-  "Jammu & Kashmir":   { lat: 33.7782, lng: 76.5762 },
-  "Jammu and Kashmir": { lat: 33.7782, lng: 76.5762 },
-  "Ladakh":            { lat: 34.1526, lng: 77.5770 },
-};
-
 const weatherEmoji = (condition) => {
   const map = {
-    Clear: "☀️", Clouds: "☁️", Rain: "🌧️", Drizzle: "🌦️",
-    Thunderstorm: "⛈️", Snow: "❄️", Mist: "🌫️", Haze: "🌫️",
-    Fog: "🌫️", Smoke: "🌫️", Dust: "🌪️",
+    Clear:"☀️", Clouds:"☁️", Rain:"🌧️", Drizzle:"🌦️",
+    Thunderstorm:"⛈️", Snow:"❄️", Mist:"🌫️", Haze:"🌫️",
+    Fog:"🌫️", Smoke:"🌫️", Dust:"🌪️",
   };
   return map[condition] || "🌤️";
 };
@@ -73,7 +37,7 @@ function FitIndia() {
 export default function MapSection({ onStateSelect, onAskAI }) {
   const [geoData, setGeoData]             = useState(null);
   const [geoError, setGeoError]           = useState(false);
-  const [selectedState, setSelectedState] = useState(null);
+  const [selectedDistrict, setSelectedDistrict] = useState(null);
   const [dialogOpen, setDialogOpen]       = useState(false);
   const [hoveredName, setHoveredName]     = useState("");
   const [apiData, setApiData]             = useState(null);
@@ -83,20 +47,20 @@ export default function MapSection({ onStateSelect, onAskAI }) {
   const [cropsLoading, setCropsLoading]   = useState(false);
   const colorMapRef                       = useRef({});
 
-  // ── Fetch crop recommendations when weather+soil data is ready ──
+  // ── Fetch crop recommendations when weather+soil loads ──────
   useEffect(() => {
-    if (!apiData || !selectedState) return;
+    if (!apiData || !selectedDistrict) return;
     setCrops(null);
     setCropsLoading(true);
 
-    const prompt = `Based on the current conditions in ${selectedState.name}, India, list the top 3-4 best crops to grow right now. Be very brief — just crop names with one short reason each. Format as a simple list.`;
+    const prompt = `Based on current conditions in ${selectedDistrict.district} district, ${selectedDistrict.state}, India, list top 3-4 best crops to grow right now. Be brief — crop name with one short reason each.`;
 
-    fetch("http://localhost:8000/api/agent", {
+    fetch("https://agrifriend-backend.onrender.com/api/agent", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         messages: [{ role: "user", content: prompt }],
-        state:    selectedState.name,
+        state:    `${selectedDistrict.district}, ${selectedDistrict.state}`,
         weather:  apiData.weather,
         soil:     apiData.soil,
       }),
@@ -105,35 +69,41 @@ export default function MapSection({ onStateSelect, onAskAI }) {
       .then((data) => { setCrops(data.reply); setCropsLoading(false); })
       .catch(() => { setCrops("Unable to fetch recommendations."); setCropsLoading(false); });
   }, [apiData]);
+
+  // ── Fetch GeoJSON ───────────────────────────────────────────
   useEffect(() => {
-    fetch(INDIA_GEOJSON_URL)
+    fetch(DISTRICT_GEOJSON_URL)
       .then((r) => {
         if (!r.ok) throw new Error("Failed to load map");
         return r.json();
       })
       .then((data) => {
-        // Assign unique color to each state
-        data.features.forEach((f, i) => {
-          const name =
-            f.properties.NAME_1 || f.properties.st_nm ||
-            f.properties.ST_NM  || f.properties.name  ||
-            f.properties.NAME   || `state_${i}`;
-          colorMapRef.current[name] = STATE_COLORS[i % STATE_COLORS.length];
+        // Assign color per state (same state = same color)
+        const stateColors = {};
+        let colorIndex = 0;
+        data.features.forEach((f) => {
+          const state = f.properties.state || "Unknown";
+          if (!stateColors[state]) {
+            stateColors[state] = COLORS[colorIndex % COLORS.length];
+            colorIndex++;
+          }
+          const district = f.properties.district || "Unknown";
+          colorMapRef.current[district] = stateColors[state];
         });
         setGeoData(data);
       })
       .catch(() => setGeoError(true));
   }, []);
 
-  // ── Fetch Weather + Soil when state clicked ─────────────────
+  // ── Fetch weather + soil when district clicked ──────────────
   useEffect(() => {
-    if (!selectedState) return;
+    if (!selectedDistrict) return;
     setApiData(null);
     setApiError(null);
     setApiLoading(true);
 
     fetch(
-      `http://localhost:8000/api/region-data?lat=${selectedState.lat}&lng=${selectedState.lng}`
+      `https://agrifriend-backend.onrender.com/api/region-data?lat=${selectedDistrict.lat}&lng=${selectedDistrict.lng}`
     )
       .then((r) => {
         if (!r.ok) throw new Error("API error");
@@ -141,47 +111,66 @@ export default function MapSection({ onStateSelect, onAskAI }) {
       })
       .then((data) => { setApiData(data); setApiLoading(false); })
       .catch(() => {
-        setApiError("Could not connect to backend. Is FastAPI running?");
+        setApiError("Could not connect to backend.");
         setApiLoading(false);
       });
-  }, [selectedState]);
+  }, [selectedDistrict]);
 
-  const getStateName = (feature) =>
-    feature.properties.NAME_1 || feature.properties.st_nm ||
-    feature.properties.ST_NM  || feature.properties.name  ||
-    feature.properties.NAME   || "Unknown";
+  // ── Get centroid of a feature ───────────────────────────────
+  const getCentroid = (feature) => {
+    try {
+      const coords = feature.geometry.type === "Polygon"
+        ? feature.geometry.coordinates[0]
+        : feature.geometry.coordinates[0][0];
+      const lats = coords.map((c) => c[1]);
+      const lngs = coords.map((c) => c[0]);
+      return {
+        lat: (Math.min(...lats) + Math.max(...lats)) / 2,
+        lng: (Math.min(...lngs) + Math.max(...lngs)) / 2,
+      };
+    } catch {
+      return { lat: 20.5937, lng: 78.9629 };
+    }
+  };
 
-  const stateStyle = (feature) => {
-    const name       = getStateName(feature);
-    const color      = colorMapRef.current[name] || "#4ade80";
-    const isSelected = selectedState?.name === name;
+  const districtStyle = (feature) => {
+    const district  = feature.properties.district || "Unknown";
+    const color     = colorMapRef.current[district] || "#4ade80";
+    const isSelected = selectedDistrict?.district === district;
     return {
       fillColor:   color,
-      fillOpacity: isSelected ? 1 : 0.78,
+      fillOpacity: isSelected ? 1 : 0.7,
       color:       "#111827",
-      weight:      isSelected ? 3 : 1.2,
+      weight:      isSelected ? 2.5 : 0.5,
       opacity:     1,
     };
   };
 
   const onEachFeature = (feature, layer) => {
-    const name = getStateName(feature);
+    const district = feature.properties.district || "Unknown";
+    const state    = feature.properties.state    || "Unknown";
+
     layer.on({
       mouseover(e) {
-        setHoveredName(name);
-        e.target.setStyle({ fillOpacity: 1, weight: 2.5, color: "#fff" });
+        setHoveredName(`${district}, ${state}`);
+        e.target.setStyle({ fillOpacity: 1, weight: 2, color: "#fff" });
         e.target.bringToFront();
       },
       mouseout(e) {
         setHoveredName("");
-        e.target.setStyle(stateStyle(feature));
+        e.target.setStyle(districtStyle(feature));
       },
       click() {
-        const color  = colorMapRef.current[name] || "#4ade80";
-        const coords = STATE_COORDS[name] || { lat: 20.5937, lng: 78.9629 };
-        setSelectedState({ name, color, ...coords });
+        const color   = colorMapRef.current[district] || "#4ade80";
+        const centroid = getCentroid(feature);
+        const districtData = { district, state, color, ...centroid };
+        setSelectedDistrict(districtData);
         setDialogOpen(true);
-        if (onStateSelect) onStateSelect(name, apiData?.weather, apiData?.soil);
+        if (onStateSelect) onStateSelect(
+          `${district}, ${state}`,
+          apiData?.weather,
+          apiData?.soil
+        );
       },
     });
   };
@@ -189,7 +178,7 @@ export default function MapSection({ onStateSelect, onAskAI }) {
   const closeDialog = () => {
     setDialogOpen(false);
     setCrops(null);
-    setTimeout(() => setSelectedState(null), 300);
+    setTimeout(() => setSelectedDistrict(null), 300);
   };
 
   const weather = apiData?.weather;
@@ -202,10 +191,10 @@ export default function MapSection({ onStateSelect, onAskAI }) {
       <div className="map-section__header">
         <div className="map-section__tag"><span>🗺️ INTERACTIVE MAP</span></div>
         <h2 className="map-section__title">
-          Explore Any State in <span className="accent">India</span>
+          Explore Any District in <span className="accent">India</span>
         </h2>
         <p className="map-section__subtitle">
-          Click on any state to view live weather, soil health &amp; crop recommendations
+          Click on any district to view live weather, soil health &amp; crop recommendations
         </p>
       </div>
 
@@ -219,10 +208,10 @@ export default function MapSection({ onStateSelect, onAskAI }) {
           {!hoveredName && (
             <div className="map-section__hint">
               {geoError
-                ? "⚠️ Map failed to load. Check internet connection."
+                ? "⚠️ Map failed to load."
                 : geoData
-                ? "👆 Click any state to explore"
-                : "⏳ Loading India map..."}
+                ? "👆 Click any district to explore"
+                : "⏳ Loading district map..."}
             </div>
           )}
 
@@ -234,9 +223,9 @@ export default function MapSection({ onStateSelect, onAskAI }) {
             <FitIndia />
             {geoData && (
               <GeoJSON
-                key={selectedState?.name || "map"}
+                key={selectedDistrict?.district || "map"}
                 data={geoData}
-                style={stateStyle}
+                style={districtStyle}
                 onEachFeature={onEachFeature}
               />
             )}
@@ -245,21 +234,24 @@ export default function MapSection({ onStateSelect, onAskAI }) {
       </div>
 
       {/* Dialog */}
-      {dialogOpen && selectedState && (
+      {dialogOpen && selectedDistrict && (
         <div className="dialog-overlay" onClick={closeDialog}>
           <div className="dialog" onClick={(e) => e.stopPropagation()}>
 
-            <div className="dialog__accent-bar" style={{ background: selectedState.color }} />
+            <div className="dialog__accent-bar" style={{ background: selectedDistrict.color }} />
 
             <div className="dialog__header">
               <div className="dialog__title-wrap">
-                <span className="dialog__dot" style={{ background: selectedState.color }} />
-                <h3 className="dialog__state-name">{selectedState.name}</h3>
+                <span className="dialog__dot" style={{ background: selectedDistrict.color }} />
+                <div>
+                  <h3 className="dialog__state-name">{selectedDistrict.district}</h3>
+                  <p className="dialog__state-sub">{selectedDistrict.state}</p>
+                </div>
               </div>
               <button className="dialog__close" onClick={closeDialog}>✕</button>
             </div>
             <p className="dialog__coords">
-              📍 {selectedState.lat.toFixed(4)}°N · {selectedState.lng.toFixed(4)}°E
+              📍 {selectedDistrict.lat.toFixed(4)}°N · {selectedDistrict.lng.toFixed(4)}°E
             </p>
 
             <div className="dialog__divider" />
@@ -295,7 +287,7 @@ export default function MapSection({ onStateSelect, onAskAI }) {
                         </p>
                       </>
                     ) : (
-                      <p className="dialog__card-value loading">Add API key to .env</p>
+                      <p className="dialog__card-value loading">No weather data</p>
                     )}
                   </div>
                   <span className="dialog__badge live">LIVE</span>
@@ -312,7 +304,7 @@ export default function MapSection({ onStateSelect, onAskAI }) {
                         </p>
                         <p className="dialog__card-meta">
                           🌊 Moisture: {soil.moisture_surface} m³/m³ &nbsp;·&nbsp;
-                          🌡️ 6cm depth: {soil.soil_temp_6cm}°C
+                          🌡️ 6cm: {soil.soil_temp_6cm}°C
                         </p>
                       </>
                     ) : (
@@ -327,7 +319,7 @@ export default function MapSection({ onStateSelect, onAskAI }) {
                   <div className="dialog__card-body">
                     <p className="dialog__card-label">Best Crops</p>
                     {cropsLoading ? (
-                      <p className="dialog__card-value loading">🤖 AI analyzing region...</p>
+                      <p className="dialog__card-value loading">🤖 AI analyzing district...</p>
                     ) : crops ? (
                       <p className="dialog__card-value crops-text">{crops}</p>
                     ) : (
@@ -344,13 +336,10 @@ export default function MapSection({ onStateSelect, onAskAI }) {
 
             <button
               className="dialog__ai-btn"
-              style={{ borderColor: selectedState.color, color: selectedState.color }}
-              onClick={() => {
-                closeDialog();
-                if (onAskAI) onAskAI();
-              }}
+              style={{ borderColor: selectedDistrict.color, color: selectedDistrict.color }}
+              onClick={() => { closeDialog(); if (onAskAI) onAskAI(); }}
             >
-              🤖 Ask AgriFriend AI about {selectedState.name}
+              🤖 Ask AgriFriend AI about {selectedDistrict.district}
             </button>
 
           </div>

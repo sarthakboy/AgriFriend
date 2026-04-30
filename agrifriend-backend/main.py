@@ -3,20 +3,40 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
 import httpx
-from dotenv import load_dotenv  # ← add this
-
-load_dotenv()  # ← add this
-# ── Paste your keys here ───────────────────────────────────────
+import asyncio
 import os
+from dotenv import load_dotenv
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_chroma import Chroma
 
+load_dotenv()
+
+# ── Keys ───────────────────────────────────────────────────────
 WEATHER_API_KEY = os.environ.get("WEATHER_API_KEY", "")
 GROQ_API_KEY    = os.environ.get("GROQ_API_KEY", "")
+
+# ── Load ChromaDB once at startup ──────────────────────────────
+print("🔄 Loading ChromaDB...")
+try:
+    embedding_model = HuggingFaceEmbeddings(
+        model_name="all-MiniLM-L6-v2",
+        model_kwargs={"device": "cpu"},
+    )
+    vectordb = Chroma(
+        persist_directory="./chroma_db",
+        embedding_function=embedding_model,
+    )
+    print("✅ ChromaDB loaded successfully!")
+except Exception as e:
+    print(f"⚠️ ChromaDB failed to load: {e}")
+    vectordb = None
+
 app = FastAPI(title="AgriFriend API")
 
 # ── CORS ───────────────────────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -27,7 +47,7 @@ app.add_middleware(
 # ──────────────────────────────────────────────────────────────
 @app.get("/api/weather")
 async def get_weather(lat: float, lng: float):
-    if not WEATHER_API_KEY or WEATHER_API_KEY == "your_openweathermap_key_here":
+    if not WEATHER_API_KEY:
         raise HTTPException(status_code=500, detail="WEATHER_API_KEY not set")
     url = (
         f"https://api.openweathermap.org/data/2.5/weather"
@@ -101,7 +121,7 @@ async def get_region_data(lat: float, lng: float):
     async with httpx.AsyncClient() as client:
 
         weather_data = None
-        if WEATHER_API_KEY and WEATHER_API_KEY != "your_openweathermap_key_here":
+        if WEATHER_API_KEY:
             try:
                 w_url = (
                     f"https://api.openweathermap.org/data/2.5/weather"
@@ -158,7 +178,25 @@ async def get_region_data(lat: float, lng: float):
 
 
 # ──────────────────────────────────────────────────────────────
-# AI AGENT ENDPOINT — Groq (Llama 3.3)
+# HELPER — Search ChromaDB
+# ──────────────────────────────────────────────────────────────
+def search_chromadb(question: str, k: int = 3) -> str:
+    if vectordb is None:
+        return ""
+    try:
+        results = vectordb.similarity_search(question, k=k)
+        if not results:
+            return ""
+        context = "\n\n".join([doc.page_content for doc in results])
+        print(f"\n📚 ChromaDB found {len(results)} relevant chunks")
+        return context
+    except Exception as e:
+        print(f"⚠️ ChromaDB search error: {e}")
+        return ""
+
+
+# ──────────────────────────────────────────────────────────────
+# AI AGENT ENDPOINT — Groq + ChromaDB RAG Pipeline
 # POST /api/agent
 # ──────────────────────────────────────────────────────────────
 
@@ -168,24 +206,55 @@ class Message(BaseModel):
 
 class AgentRequest(BaseModel):
     messages: List[Message]
-    state:   Optional[str]  = None
-    weather: Optional[dict] = None
-    soil:    Optional[dict] = None
+    state:    Optional[str]  = None
+    weather:  Optional[dict] = None
+    soil:     Optional[dict] = None
 
 @app.post("/api/agent")
 async def agent(req: AgentRequest):
-    if not GROQ_API_KEY or GROQ_API_KEY == "your_groq_key_here":
+    print("\n🚀 Agent endpoint called!")
+    print(f"📨 Messages received: {len(req.messages)}")
+    print(f"📍 State: {req.state}")
+
+    if not GROQ_API_KEY:
+        print("❌ GROQ_API_KEY not set!")
         raise HTTPException(status_code=500, detail="GROQ_API_KEY not set")
+
+    # ── Get last user message for ChromaDB search ──────────────
+    last_user_msg = ""
+    for m in reversed(req.messages):
+        if m.role == "user":
+            last_user_msg = m.content
+            break
+
+    print(f"🔍 Last user message: {last_user_msg}")
+
+    # ── Search ChromaDB concurrently ───────────────────────────
+    print("🔄 Searching ChromaDB...")
+    loop = asyncio.get_event_loop()
+    chromadb_context = await loop.run_in_executor(
+        None, search_chromadb, last_user_msg
+    )
+    print(f"📚 ChromaDB context length: {len(chromadb_context)} chars")
 
     # ── Build system prompt ────────────────────────────────────
     context = [
         "You are AgriFriend AI, an expert farming assistant for Indian farmers.",
+        "You also have knowledge about Sarthak Pandey who built this app.",
         "Give practical, specific, concise advice. Be friendly and helpful.",
     ]
 
+    # Inject ChromaDB results
+    if chromadb_context:
+        context.append(
+            f"\nRelevant knowledge from database:\n{chromadb_context}"
+        )
+
+    # Inject state
     if req.state:
         context.append(f"\nThe farmer is asking about: {req.state}, India.")
 
+    # Inject live weather
     if req.weather:
         w = req.weather
         context.append(
@@ -196,6 +265,7 @@ async def agent(req: AgentRequest):
             f"\n- Wind: {w.get('wind_speed')} km/h"
         )
 
+    # Inject live soil
     if req.soil:
         s = req.soil
         context.append(
@@ -207,8 +277,9 @@ async def agent(req: AgentRequest):
         )
 
     context.append(
-        "\nUse this live data for accurate advice. "
-        "Suggest crops, fertilizers, irrigation tips, pest warnings as needed."
+        "\nUse the most relevant context to answer accurately. "
+        "For farming questions use weather + soil data. "
+        "For personal questions about Sarthak use the knowledge database."
     )
 
     system_prompt = "\n".join(context)
@@ -237,7 +308,7 @@ async def agent(req: AgentRequest):
             )
             res.raise_for_status()
             reply = res.json()["choices"][0]["message"]["content"]
-            print(f"\n✅ Groq response: {reply[:100]}...\n")  # print in terminal
+            print(f"\n✅ Groq response: {reply[:100]}...\n")
             return {"reply": reply}
 
         except httpx.HTTPStatusError as e:

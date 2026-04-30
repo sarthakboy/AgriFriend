@@ -3,9 +3,9 @@ import emailjs from "@emailjs/browser";
 import "./ContactPage.css";
 
 // ── Paste your EmailJS credentials here ───────────────────────
-const EMAILJS_SERVICE_ID  = "service_0xp8dpq";
-const EMAILJS_TEMPLATE_ID = "template_c180vwa";
-const EMAILJS_PUBLIC_KEY  = "https://dashboard.emailjs.com/admin/templates";
+const EMAILJS_SERVICE_ID  = "your_service_id";
+const EMAILJS_TEMPLATE_ID = "your_template_id";
+const EMAILJS_PUBLIC_KEY  = "your_public_key";
 
 export default function ContactPage() {
   const [form, setForm]         = useState({ name: "", email: "", subject: "", message: "" });
